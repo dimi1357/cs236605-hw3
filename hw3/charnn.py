@@ -22,7 +22,9 @@ def char_maps(text: str):
     # It's best if you also sort the chars before assigning indices, so that
     # they're in lexical order.
     # ====== YOUR CODE: ======
-    raise NotImplementedError()
+    temp = sorted(list(set(text)))
+    idx_to_char = {idx: temp[idx] for idx in range(len(temp))}
+    char_to_idx = {temp[idx]: idx for idx in range(len(temp))}
     # ========================
     return char_to_idx, idx_to_char
 
@@ -38,7 +40,9 @@ def remove_chars(text: str, chars_to_remove):
     """
     # TODO: Implement according to the docstring.
     # ====== YOUR CODE: ======
-    raise NotImplementedError()
+    n_removed = sum([text.count(c) for c in chars_to_remove])
+    pattern = '[' + ''.join(chars_to_remove) + ']'
+    text_clean = re.sub(r'{}'.format(pattern), '', text)
     # ========================
     return text_clean, n_removed
 
@@ -58,7 +62,9 @@ def chars_to_onehot(text: str, char_to_idx: dict) -> Tensor:
     """
     # TODO: Implement the embedding.
     # ====== YOUR CODE: ======
-    raise NotImplementedError()
+    num_chars = len(char_to_idx.keys())
+    l = [[1 if idx == char_to_idx[c] else 0 for idx in range(num_chars)] for c in text]
+    result = torch.tensor(l, dtype=torch.int8)
     # ========================
     return result
 
@@ -75,7 +81,9 @@ def onehot_to_chars(embedded_text: Tensor, idx_to_char: dict) -> str:
     """
     # TODO: Implement the reverse-embedding.
     # ====== YOUR CODE: ======
-    raise NotImplementedError()
+    D = embedded_text.shape[0]
+    temp = [idx_to_char[embedded_text[idx].argmax(-1).item()] for idx in range(D)]
+    result = ''.join(temp)
     # ========================
     return result
 
@@ -104,7 +112,17 @@ def chars_to_labelled_samples(text: str, char_to_idx: dict, seq_len: int,
     # 3. Create the labels tensor in a similar way and convert to indices.
     # Note that no explicit loops are required to implement this function.
     # ====== YOUR CODE: ======
-    raise NotImplementedError()
+    V = len(char_to_idx)
+    S = seq_len
+    N = (len(text) - 1) // seq_len
+    embedded = chars_to_onehot(text, char_to_idx)
+    samples = embedded[:N*S]
+    samples = samples.view(N, S, V)
+    samples = samples.to(device)
+    labels = embedded[1: N * S + 1]
+    labels = torch.argmax(labels, dim=1)
+    labels = labels.view(N, S)
+    labels = labels.to(device)
     # ========================
     return samples, labels
 
