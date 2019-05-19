@@ -218,7 +218,13 @@ class MultilayerGRU(nn.Module):
         #     then call self.register_parameter() on them. Also make
         #     sure to initialize them. See functions in torch.nn.init.
         # ====== YOUR CODE: ======
-        raise NotImplementedError()
+        self.phi_h, self.phi_y = nn.Tanh, nn.Sigmoid
+
+        self.fc_xh = nn.Linear(in_dim, h_dim, bias=False)
+        self.fc_hh = nn.Linear(h_dim, h_dim, bias=True)
+
+        self.embedded = nn.Linear(h_dim, out_dim, bias=True)
+
         # ========================
 
     def forward(self, input: Tensor, hidden_state: Tensor=None):
