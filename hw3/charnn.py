@@ -218,12 +218,20 @@ class MultilayerGRU(nn.Module):
         #     then call self.register_parameter() on them. Also make
         #     sure to initialize them. See functions in torch.nn.init.
         # ====== YOUR CODE: ======
-        self.phi_h, self.phi_y = nn.Tanh, nn.Sigmoid
+        self.phi_h, self.phi_y = nn.Tanh(), nn.Sigmoid()
 
-        self.fc_xh = nn.Linear(in_dim, h_dim, bias=False)
-        self.fc_hh = nn.Linear(h_dim, h_dim, bias=True)
+        self.fc_xz = nn.ModuleList([nn.Linear(in_dim, h_dim, bias=False), nn.Linear(h_dim, h_dim, bias=False)])
+        self.fc_hz = nn.Linear(h_dim, h_dim, bias=True)
 
-        self.embedded = nn.Linear(h_dim, out_dim, bias=True)
+        self.fc_xr = nn.ModuleList([nn.Linear(in_dim, h_dim, bias=False), nn.Linear(h_dim, h_dim, bias=False)])
+        self.fc_hr = nn.Linear(h_dim, h_dim, bias=True)
+
+        self.fc_xg = nn.ModuleList([nn.Linear(in_dim, h_dim, bias=False), nn.Linear(h_dim, h_dim, bias=False)])
+        self.fc_hg = nn.Linear(h_dim, h_dim, bias=True)
+
+        self.drop = nn.Dropout(dropout)
+
+        self.embed = nn.Linear(h_dim, out_dim, bias=True)
 
         # ========================
 
@@ -259,6 +267,31 @@ class MultilayerGRU(nn.Module):
         # Tip: You can use torch.stack() to combine multiple tensors into a
         # single tensor in a differentiable manner.
         # ====== YOUR CODE: ======
-        raise NotImplementedError()
+        layer_output = []
+        hidden_state = []
+        for b_id in range(batch_size):
+            batch_output = []
+            for seq in range(seq_len):
+                for k in range(self.n_layers):
+                    if k == 0:
+                        x = layer_input[b_id][seq]
+                    else:
+                        x = self.drop(layer_states[k-1][b_id])
+
+                    idx = max(0, k)
+
+                    z = self.phi_y(self.fc_xz[idx](x) + self.fc_hz(layer_states[k][b_id]))
+                    r = self.phi_y(self.fc_xr[idx](x) + self.fc_hr(layer_states[k][b_id]))
+                    g = self.phi_h(self.fc_xg[idx](x) + self.fc_hg(r.mul(layer_states[k][b_id])))
+                    layer_states[k][b_id] = z.mul(layer_states[k][b_id]) + (1 - z).mul(g)
+
+                batch_output.append(self.embed(layer_states[-1][b_id]))
+
+            layer_output.append(torch.stack(batch_output))
+            hidden_state.append(torch.stack([layer_states[j][b_id] for j in range(self.n_layers)]))
+
+        hidden_state = torch.stack(hidden_state)
+        layer_output = torch.stack(layer_output)
+
         # ========================
         return layer_output, hidden_state
