@@ -116,7 +116,7 @@ def chars_to_labelled_samples(text: str, char_to_idx: dict, seq_len: int,
     S = seq_len
     N = (len(text) - 1) // seq_len
     embedded = chars_to_onehot(text, char_to_idx)
-    samples = embedded[:N*S]
+    samples = embedded[:N * S]
     samples = samples.view(N, S, V)
     samples = samples.to(device)
     labels = embedded[1: N * S + 1]
@@ -184,6 +184,7 @@ class MultilayerGRU(nn.Module):
     """
     Represents a multi-layer GRU (gated recurrent unit) model.
     """
+
     def __init__(self, in_dim, h_dim, out_dim, n_layers, dropout=0):
         """
         :param in_dim: Number of input dimensions (at each timestep).
@@ -218,24 +219,59 @@ class MultilayerGRU(nn.Module):
         #     then call self.register_parameter() on them. Also make
         #     sure to initialize them. See functions in torch.nn.init.
         # ====== YOUR CODE: ======
-        self.phi_h, self.phi_y = nn.Tanh(), nn.Sigmoid()
+        # self.phi_h, self.phi_y = nn.Tanh(), nn.Sigmoid()
+        #
+        # self.fc_xz = nn.ModuleList([nn.Linear(in_dim, h_dim, bias=False), nn.Linear(h_dim, h_dim, bias=False)])
+        # self.fc_hz = nn.Linear(h_dim, h_dim, bias=True)
+        #
+        # self.fc_xr = nn.ModuleList([nn.Linear(in_dim, h_dim, bias=False), nn.Linear(h_dim, h_dim, bias=False)])
+        # self.fc_hr = nn.Linear(h_dim, h_dim, bias=True)
+        #
+        # self.fc_xg = nn.ModuleList([nn.Linear(in_dim, h_dim, bias=False), nn.Linear(h_dim, h_dim, bias=False)])
+        # self.fc_hg = nn.Linear(h_dim, h_dim, bias=True)
+        #
+        # self.drop = nn.Dropout(dropout)
+        #
+        # self.embed = nn.Linear(h_dim, out_dim, bias=True)
 
-        self.fc_xz = nn.ModuleList([nn.Linear(in_dim, h_dim, bias=False), nn.Linear(h_dim, h_dim, bias=False)])
-        self.fc_hz = nn.Linear(h_dim, h_dim, bias=True)
+        # self.layer_params.append(nn.Tanh)
+        # self.layer_params.append(nn.Sigmoid)
+        # self.layer_params.append(nn.Linear)
+        # self.layer_params.append(nn.Linear)
+        # self.layer_params.append(nn.Linear)
+        # self.layer_params.append(nn.Linear)
+        # self.layer_params.append(nn.Linear)
+        # self.layer_params.append(nn.Linear)
+        # self.layer_params.append(nn.Dropout)
+        self.layer_params.append(nn.ModuleList([nn.Tanh(), nn.Sigmoid(), nn.Linear(in_dim, h_dim, bias=False),
+                                                nn.Linear(h_dim, h_dim, bias=True),
+                                                nn.Linear(in_dim, h_dim, bias=False),
+                                                nn.Linear(h_dim, h_dim, bias=True),
+                                                nn.Linear(in_dim, h_dim, bias=False),
+                                                nn.Linear(h_dim, h_dim, bias=True), nn.Dropout(dropout)]))
 
-        self.fc_xr = nn.ModuleList([nn.Linear(in_dim, h_dim, bias=False), nn.Linear(h_dim, h_dim, bias=False)])
-        self.fc_hr = nn.Linear(h_dim, h_dim, bias=True)
+        for _ in range(self.n_layers - 1):
+            self.layer_params.append(nn.ModuleList([nn.Tanh(), nn.Sigmoid(), nn.Linear(h_dim, h_dim, bias=False),
+                                                    nn.Linear(h_dim, h_dim, bias=True),
+                                                    nn.Linear(h_dim, h_dim, bias=False),
+                                                    nn.Linear(h_dim, h_dim, bias=True),
+                                                    nn.Linear(h_dim, h_dim, bias=False),
+                                                    nn.Linear(h_dim, h_dim, bias=True), nn.Dropout(dropout)]))
 
-        self.fc_xg = nn.ModuleList([nn.Linear(in_dim, h_dim, bias=False), nn.Linear(h_dim, h_dim, bias=False)])
-        self.fc_hg = nn.Linear(h_dim, h_dim, bias=True)
+        self.layer_params.append(nn.Linear(h_dim, out_dim, bias=True))
 
-        self.drop = nn.Dropout(dropout)
-
-        self.embed = nn.Linear(h_dim, out_dim, bias=True)
+        i = 0
+        for l in self.layer_params:
+            if type(l) == nn.ModuleList:
+                for param in l:
+                    self.add_module(str(i), param)
+                    i += 1
+            else:
+                self.add_module(str(i), l)
 
         # ========================
 
-    def forward(self, input: Tensor, hidden_state: Tensor=None):
+    def forward(self, input: Tensor, hidden_state: Tensor = None):
         """
         :param input: Batch of sequences. Shape should be (B, S, I) where B is
         the batch size, S is the length of each sequence and I is the
@@ -276,16 +312,16 @@ class MultilayerGRU(nn.Module):
                     if k == 0:
                         x = layer_input[b_id][seq]
                     else:
-                        x = self.drop(layer_states[k-1][b_id])
+                        x = self.layer_params[k][8](layer_states[k - 1][b_id])
 
                     idx = max(0, k)
 
-                    z = self.phi_y(self.fc_xz[idx](x) + self.fc_hz(layer_states[k][b_id]))
-                    r = self.phi_y(self.fc_xr[idx](x) + self.fc_hr(layer_states[k][b_id]))
-                    g = self.phi_h(self.fc_xg[idx](x) + self.fc_hg(r.mul(layer_states[k][b_id])))
+                    z = self.layer_params[k][1](self.layer_params[k][2](x) + self.layer_params[k][3](layer_states[k][b_id]))
+                    r = self.layer_params[k][1](self.layer_params[k][4](x) + self.layer_params[k][5](layer_states[k][b_id]))
+                    g = self.layer_params[k][0](self.layer_params[k][6](x) + self.layer_params[k][7](r.mul(layer_states[k][b_id])))
                     layer_states[k][b_id] = z.mul(layer_states[k][b_id]) + (1 - z).mul(g)
 
-                batch_output.append(self.embed(layer_states[-1][b_id]))
+                batch_output.append(self.layer_params[-1](layer_states[-1][b_id]))
 
             layer_output.append(torch.stack(batch_output))
             hidden_state.append(torch.stack([layer_states[j][b_id] for j in range(self.n_layers)]))
