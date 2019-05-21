@@ -177,11 +177,17 @@ def generate_from_model(model, start_sequence, n_chars, char_maps, T):
     # ====== YOUR CODE: ======
     with torch.no_grad():
         while len(out_text) < n_chars:
-            x = chars_to_onehot(start_sequence, char_to_idx)
+            x = chars_to_onehot(out_text, char_to_idx)
             x.to(device)
             x = x.unsqueeze(0)
-            y, h = model(x)
-            print(onehot_to_chars(y[0]))
+            y, h = model(x.to(dtype=torch.float))
+            res_y = hot_softmax(y.squeeze(0),0,T)
+            res_y = torch.distributions.multinomial.Multinomial(1, res_y)
+            res_y = torch.argmax(res_y.sample()[-1])
+            char = idx_to_char[res_y.item()]
+            char_hot=chars_to_onehot(char, char_to_idx).to(device)
+            out_text += char
+#             print(onehot_to_chars(y[0], idx_to_char))
     # ========================
 
     return out_text
@@ -323,7 +329,6 @@ class MultilayerGRU(nn.Module):
                         x = self.layer_params[k][8](layer_states[k - 1][b_id])
 
                     idx = max(0, k)
-
                     z = self.layer_params[k][1](self.layer_params[k][2](x) + self.layer_params[k][3](layer_states[k][b_id]))
                     r = self.layer_params[k][1](self.layer_params[k][4](x) + self.layer_params[k][5](layer_states[k][b_id]))
                     g = self.layer_params[k][0](self.layer_params[k][6](x) + self.layer_params[k][7](r.mul(layer_states[k][b_id])))
