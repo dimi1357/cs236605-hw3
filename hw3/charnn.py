@@ -138,7 +138,8 @@ def hot_softmax(y, dim=0, temperature=1.0):
     """
     # TODO: Implement based on the above.
     # ====== YOUR CODE: ======
-    raise NotImplementedError()
+    scaled_y = (1.0 / temperature) * y
+    result = torch.exp(scaled_y) / (y.exp().sum(dim)).unsqueeze(dim)
     # ========================
     return result
 
@@ -174,7 +175,13 @@ def generate_from_model(model, start_sequence, n_chars, char_maps, T):
     # necessary for this. Best to disable tracking for speed.
     # See torch.no_grad().
     # ====== YOUR CODE: ======
-    raise NotImplementedError()
+    with torch.no_grad():
+        while len(out_text) < n_chars:
+            x = chars_to_onehot(start_sequence, char_to_idx)
+            x.to(device)
+            x = x.unsqueeze(0)
+            y, h = model(x)
+            print(onehot_to_chars(y[0]))
     # ========================
 
     return out_text
@@ -268,6 +275,7 @@ class MultilayerGRU(nn.Module):
                     i += 1
             else:
                 self.add_module(str(i), l)
+
 
         # ========================
 
