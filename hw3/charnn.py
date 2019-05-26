@@ -185,7 +185,6 @@ def generate_from_model(model, start_sequence, n_chars, char_maps, T):
             res_y = torch.distributions.multinomial.Multinomial(1, res_y)
             res_y = torch.argmax(res_y.sample()[-1])
             char = idx_to_char[res_y.item()]
-            char_hot=chars_to_onehot(char, char_to_idx).to(device)
             out_text += char
 #             print(onehot_to_chars(y[0], idx_to_char))
     # ========================
@@ -256,6 +255,7 @@ class MultilayerGRU(nn.Module):
         # self.layer_params.append(nn.Linear)
         # self.layer_params.append(nn.Linear)
         # self.layer_params.append(nn.Dropout)
+        self.layer_params = nn.ModuleList()
         self.layer_params.append(nn.ModuleList([nn.Tanh(), nn.Sigmoid(), nn.Linear(in_dim, h_dim, bias=False),
                                                 nn.Linear(h_dim, h_dim, bias=True),
                                                 nn.Linear(in_dim, h_dim, bias=False),
@@ -273,15 +273,14 @@ class MultilayerGRU(nn.Module):
 
         self.layer_params.append(nn.Linear(h_dim, out_dim, bias=True))
 
-        i = 0
-        for l in self.layer_params:
-            if type(l) == nn.ModuleList:
-                for param in l:
-                    self.add_module(str(i), param)
-                    i += 1
-            else:
-                self.add_module(str(i), l)
-
+        # i = 0
+        # for l in self.layer_params:
+        #     if type(l) == nn.ModuleList:
+        #         for param in l:
+        #             self.add_module(str(i), param)
+        #             i += 1
+        #     else:
+        #         self.add_module(str(i), l)
 
         # ========================
 
@@ -319,25 +318,28 @@ class MultilayerGRU(nn.Module):
         # ====== YOUR CODE: ======
         layer_output = []
         hidden_state = []
+        layer_states2 = layer_states.copy()
+
+        # self.layer_params.to(input.device)
+
         for b_id in range(batch_size):
             batch_output = []
             for seq in range(seq_len):
                 for k in range(self.n_layers):
                     if k == 0:
-                        x = layer_input[b_id][seq]
+                        layer_input = input[b_id][seq]
                     else:
-                        x = self.layer_params[k][8](layer_states[k - 1][b_id])
+                        layer_input = self.layer_params[k][8](layer_states2[k - 1][b_id])
 
-                    idx = max(0, k)
-                    z = self.layer_params[k][1](self.layer_params[k][2](x) + self.layer_params[k][3](layer_states[k][b_id]))
-                    r = self.layer_params[k][1](self.layer_params[k][4](x) + self.layer_params[k][5](layer_states[k][b_id]))
-                    g = self.layer_params[k][0](self.layer_params[k][6](x) + self.layer_params[k][7](r.mul(layer_states[k][b_id])))
-                    layer_states[k][b_id] = z.mul(layer_states[k][b_id]) + (1 - z).mul(g)
+                    z = self.layer_params[k][1](self.layer_params[k][2](layer_input) + self.layer_params[k][3](layer_states2[k-1][b_id]))
+                    r = self.layer_params[k][1](self.layer_params[k][4](layer_input) + self.layer_params[k][5](layer_states2[k-1][b_id]))
+                    g = self.layer_params[k][0](self.layer_params[k][6](layer_input) + self.layer_params[k][7](r * (layer_states2[k-1][b_id])))
+                    layer_states2[k][b_id] = z * (layer_states2[k-1][b_id]) + (1 - z) * g
 
-                batch_output.append(self.layer_params[-1](layer_states[-1][b_id]))
+                batch_output.append(self.layer_params[-1](layer_states2[-1][b_id]))
 
             layer_output.append(torch.stack(batch_output))
-            hidden_state.append(torch.stack([layer_states[j][b_id] for j in range(self.n_layers)]))
+            hidden_state.append(torch.stack([layer_states2[j][b_id] for j in range(self.n_layers)]))
 
         hidden_state = torch.stack(hidden_state)
         layer_output = torch.stack(layer_output)
