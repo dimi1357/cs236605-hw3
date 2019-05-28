@@ -85,7 +85,29 @@ class Trainer(abc.ABC):
             # - Implement early stopping. This is a very useful and
             #   simple regularization technique that is highly recommended.
             # ====== YOUR CODE: ======
-            raise NotImplementedError()
+            actual_num_epochs += 1
+            if not best_acc:
+                best_acc = -1
+            train_result = self.train_epoch(dl_train, **kw)
+            train_loss.append(torch.tensor(train_result.losses).mean().item())
+            train_acc.append(train_result.accuracy)
+
+            test_result = self.test_epoch(dl_test, **kw)
+            test_loss.append(torch.tensor(test_result.losses).mean().item())
+            test_acc.append(test_result.accuracy)
+
+            curr_loss = test_loss[-1]
+            best_loss = min(test_loss[:-1]) if len(test_loss) >= 2 else 1e3
+            if early_stopping and (curr_loss > best_loss - 1e-4):
+                epochs_without_improvement += 1
+                if epochs_without_improvement >= early_stopping:
+                    break
+            else:
+                epochs_without_improvement = 0
+
+            if checkpoints is not None and test_acc[-1] > best_acc:
+                torch.save(self.model, checkpoints)
+                best_acc = test_acc[-1]
             # ========================
 
             # Save model checkpoint if requested
@@ -207,14 +229,15 @@ class RNNTrainer(Trainer):
     def train_epoch(self, dl_train: DataLoader, **kw):
         # TODO: Implement modifications to the base method, if needed.
         # ====== YOUR CODE: ======
-
+        self.hidden = None
+        # self.flag = True
         # ========================
         return super().train_epoch(dl_train, **kw)
 
     def test_epoch(self, dl_test: DataLoader, **kw):
         # TODO: Implement modifications to the base method, if needed.
         # ====== YOUR CODE: ======
-        raise NotImplementedError()
+        self.hidden = None
         # ========================
         return super().test_epoch(dl_test, **kw)
 
@@ -232,17 +255,19 @@ class RNNTrainer(Trainer):
         # - Calculate number of correct char predictions
         # ====== YOUR CODE: ======
         self.optimizer.zero_grad()
-        y_hat, hidden = self.model(x)
-        print(y)
-        print(y_hat)
-        loss = self.loss_fn(y_hat[0], y[0])
+        y_hat, self.hidden = self.model(x, self.hidden)
+        y_hat = y_hat.permute(0,2,1)
+        loss = self.loss_fn(y_hat, y)
         # loss = self.loss_fn(y_hat, y)
-
         loss.backward()
+
         self.optimizer.step()
 
-        y_hat = [int(y_hat[i].argmax()) for i in range(y_hat.shape[0])]
-        y_hat = torch.tensor(y_hat, dtype=y.dtype)
+        self.hidden = self.hidden.detach()
+        self.hidden.requires_grad = False
+
+        y_hat = y_hat.argmax(dim=1)
+        # y_hat = torch.tensor(y_hat, dtype=y.dtype)
         num_correct = torch.sum(y == y_hat)
 
         # ========================
@@ -263,7 +288,18 @@ class RNNTrainer(Trainer):
             # - Loss calculation
             # - Calculate number of correct predictions
             # ====== YOUR CODE: ======
-            raise NotImplementedError()
+            self.optimizer.zero_grad()
+            y_hat, self.hidden = self.model(x, self.hidden)
+            y_hat = y_hat.permute(0, 2, 1)
+            loss = self.loss_fn(y_hat, y)
+            # loss = self.loss_fn(y_hat, y)
+
+            self.hidden = self.hidden.detach()
+            self.hidden.requires_grad = False
+
+            y_hat = y_hat.argmax(dim=1)
+            # y_hat = torch.tensor(y_hat, dtype=y.dtype)
+            num_correct = torch.sum(y == y_hat)
             # ========================
 
         return BatchResult(loss.item(), num_correct.item() / seq_len)

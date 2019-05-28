@@ -139,7 +139,8 @@ def hot_softmax(y, dim=0, temperature=1.0):
     # TODO: Implement based on the above.
     # ====== YOUR CODE: ======
     scaled_y = (1.0 / temperature) * y
-    result = torch.exp(scaled_y) / (y.exp().sum(dim)).unsqueeze(dim)
+    # result = torch.exp(scaled_y) / (y.exp().sum(dim)).unsqueeze(dim)
+    result = F.softmax(scaled_y,dim)
     # ========================
     return result
 
@@ -176,17 +177,18 @@ def generate_from_model(model, start_sequence, n_chars, char_maps, T):
     # See torch.no_grad().
     # ====== YOUR CODE: ======
     with torch.no_grad():
+        h = None
+        x = chars_to_onehot(out_text, char_to_idx)
         while len(out_text) < n_chars:
-            x = chars_to_onehot(out_text, char_to_idx)
             x.to(device)
             x = x.unsqueeze(0)
-            y, h = model(x.to(dtype=torch.float))
-            res_y = hot_softmax(y.squeeze(0),0,T)
-            res_y = torch.distributions.multinomial.Multinomial(1, res_y)
-            res_y = torch.argmax(res_y.sample()[-1])
+            y, h = model(x.to(dtype=torch.float), h)
+            res_y = hot_softmax(y[0, -1, :], 0, T)
+            res_y = torch.multinomial(res_y, 1)
             char = idx_to_char[res_y.item()]
             out_text += char
-#             print(onehot_to_chars(y[0], idx_to_char))
+            x = chars_to_onehot(char, char_to_idx)
+    #             print(onehot_to_chars(y[0], idx_to_char))
     # ========================
 
     return out_text
@@ -231,56 +233,35 @@ class MultilayerGRU(nn.Module):
         #     then call self.register_parameter() on them. Also make
         #     sure to initialize them. See functions in torch.nn.init.
         # ====== YOUR CODE: ======
-        # self.phi_h, self.phi_y = nn.Tanh(), nn.Sigmoid()
-        #
-        # self.fc_xz = nn.ModuleList([nn.Linear(in_dim, h_dim, bias=False), nn.Linear(h_dim, h_dim, bias=False)])
-        # self.fc_hz = nn.Linear(h_dim, h_dim, bias=True)
-        #
-        # self.fc_xr = nn.ModuleList([nn.Linear(in_dim, h_dim, bias=False), nn.Linear(h_dim, h_dim, bias=False)])
-        # self.fc_hr = nn.Linear(h_dim, h_dim, bias=True)
-        #
-        # self.fc_xg = nn.ModuleList([nn.Linear(in_dim, h_dim, bias=False), nn.Linear(h_dim, h_dim, bias=False)])
-        # self.fc_hg = nn.Linear(h_dim, h_dim, bias=True)
-        #
-        # self.drop = nn.Dropout(dropout)
-        #
-        # self.embed = nn.Linear(h_dim, out_dim, bias=True)
-
-        # self.layer_params.append(nn.Tanh)
-        # self.layer_params.append(nn.Sigmoid)
-        # self.layer_params.append(nn.Linear)
-        # self.layer_params.append(nn.Linear)
-        # self.layer_params.append(nn.Linear)
-        # self.layer_params.append(nn.Linear)
-        # self.layer_params.append(nn.Linear)
-        # self.layer_params.append(nn.Linear)
-        # self.layer_params.append(nn.Dropout)
-        self.layer_params = nn.ModuleList()
-        self.layer_params.append(nn.ModuleList([nn.Tanh(), nn.Sigmoid(), nn.Linear(in_dim, h_dim, bias=False),
-                                                nn.Linear(h_dim, h_dim, bias=True),
-                                                nn.Linear(in_dim, h_dim, bias=False),
-                                                nn.Linear(h_dim, h_dim, bias=True),
-                                                nn.Linear(in_dim, h_dim, bias=False),
-                                                nn.Linear(h_dim, h_dim, bias=True), nn.Dropout(dropout)]))
+        self.layer_params.append((nn.Tanh(), nn.Sigmoid(),
+                                  nn.Linear(in_dim, 1, bias=True),
+                                  nn.Linear(h_dim, 1, bias=False),
+                                  nn.Linear(in_dim, 1, bias=True),
+                                  nn.Linear(h_dim, 1, bias=False),
+                                  nn.Linear(in_dim, h_dim, bias=True),
+                                  nn.Linear(h_dim, h_dim, bias=False),
+                                  nn.Dropout(dropout)))
 
         for _ in range(self.n_layers - 1):
-            self.layer_params.append(nn.ModuleList([nn.Tanh(), nn.Sigmoid(), nn.Linear(h_dim, h_dim, bias=False),
-                                                    nn.Linear(h_dim, h_dim, bias=True),
-                                                    nn.Linear(h_dim, h_dim, bias=False),
-                                                    nn.Linear(h_dim, h_dim, bias=True),
-                                                    nn.Linear(h_dim, h_dim, bias=False),
-                                                    nn.Linear(h_dim, h_dim, bias=True), nn.Dropout(dropout)]))
+            self.layer_params.append((nn.Tanh(), nn.Sigmoid(),
+                                      nn.Linear(h_dim, 1, bias=True),
+                                      nn.Linear(h_dim, 1, bias=False),
+                                      nn.Linear(h_dim, 1, bias=True),
+                                      nn.Linear(h_dim, 1, bias=False),
+                                      nn.Linear(h_dim, h_dim, bias=True),
+                                      nn.Linear(h_dim, h_dim, bias=False),
+                                      nn.Dropout(dropout)))
 
         self.layer_params.append(nn.Linear(h_dim, out_dim, bias=True))
 
-        # i = 0
-        # for l in self.layer_params:
-        #     if type(l) == nn.ModuleList:
-        #         for param in l:
-        #             self.add_module(str(i), param)
-        #             i += 1
-        #     else:
-        #         self.add_module(str(i), l)
+        i = 0
+        for l in self.layer_params:
+            if type(l) == tuple:
+                for param in l:
+                    self.add_module(str(i), param)
+                    i += 1
+            else:
+                self.add_module(str(i), l)
 
         # ========================
 
@@ -316,33 +297,39 @@ class MultilayerGRU(nn.Module):
         # Tip: You can use torch.stack() to combine multiple tensors into a
         # single tensor in a differentiable manner.
         # ====== YOUR CODE: ======
-        layer_output = []
-        hidden_state = []
-        layer_states2 = layer_states.copy()
 
         # self.layer_params.to(input.device)
 
-        for b_id in range(batch_size):
-            batch_output = []
-            for seq in range(seq_len):
-                for k in range(self.n_layers):
-                    if k == 0:
-                        layer_input = input[b_id][seq]
-                    else:
-                        layer_input = self.layer_params[k][8](layer_states2[k - 1][b_id])
+        for layer in self.layer_params:
+            if type(layer) == tuple:
+                for l in layer:
+                    l.to(input.device)
+            else:
+                layer.to(input.device)
 
-                    z = self.layer_params[k][1](self.layer_params[k][2](layer_input) + self.layer_params[k][3](layer_states2[k-1][b_id]))
-                    r = self.layer_params[k][1](self.layer_params[k][4](layer_input) + self.layer_params[k][5](layer_states2[k-1][b_id]))
-                    g = self.layer_params[k][0](self.layer_params[k][6](layer_input) + self.layer_params[k][7](r * (layer_states2[k-1][b_id])))
-                    layer_states2[k][b_id] = z * (layer_states2[k-1][b_id]) + (1 - z) * g
+        for seq in range(seq_len):
+            x = layer_input[:, seq, :]
+            for k in range(self.n_layers):
+                h = layer_states[k].clone()
+                z = self.layer_params[k][1](
+                    self.layer_params[k][2](x) + self.layer_params[k][3](h))
+                r = self.layer_params[k][1](
+                    self.layer_params[k][4](x) + self.layer_params[k][5](h))
+                g = self.layer_params[k][0](self.layer_params[k][6](x) + self.layer_params[k][7](
+                    r * h))
 
-                batch_output.append(self.layer_params[-1](layer_states2[-1][b_id]))
+                h = h * z + (1 - z) * g
 
-            layer_output.append(torch.stack(batch_output))
-            hidden_state.append(torch.stack([layer_states2[j][b_id] for j in range(self.n_layers)]))
+                layer_states[k] = h
 
-        hidden_state = torch.stack(hidden_state)
-        layer_output = torch.stack(layer_output)
+                x = self.layer_params[k][8](h)
+
+                if layer_output is None:
+                    layer_output = torch.zeros_like(layer_input)
+
+                layer_output[:, seq, :] = self.layer_params[-1](x)
+
+        hidden_state = torch.stack(layer_states,1)
 
         # ========================
         return layer_output, hidden_state

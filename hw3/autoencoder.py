@@ -17,7 +17,16 @@ class EncoderCNN(nn.Module):
         # You can use any Conv layer parameters, use pooling or only strides,
         # use any activation functions, use BN or Dropout, etc.
         # ====== YOUR CODE: ======
-        raise NotImplementedError()
+        modules.append(nn.Conv2d(in_channels=in_channels, out_channels=64, kernel_size=(5, 5), padding=2))
+        modules.append(nn.BatchNorm2d(64))
+        modules.append(nn.ReLU())
+        modules.append(nn.Conv2d(in_channels=64, out_channels=128, kernel_size=(5, 5), padding=2))
+        modules.append(nn.BatchNorm2d(128))
+        modules.append(nn.ReLU())
+        modules.append(nn.Conv2d(in_channels=128, out_channels=256, kernel_size=(5, 5), padding=2))
+        modules.append(nn.BatchNorm2d(256))
+        modules.append(nn.ReLU())
+        modules.append(nn.Conv2d(in_channels=256, out_channels=out_channels, kernel_size=(5, 5), padding=2))
         # ========================
         self.cnn = nn.Sequential(*modules)
 
@@ -39,7 +48,16 @@ class DecoderCNN(nn.Module):
         # Output should be a batch of images, with same dimensions as the
         # inputs to the Encoder were.
         # ====== YOUR CODE: ======
-        raise NotImplementedError()
+        modules.append(nn.ConvTranspose2d(in_channels=in_channels, out_channels=256, kernel_size=(5, 5), padding=2))
+        modules.append(nn.BatchNorm2d(256))
+        modules.append(nn.ReLU())
+        modules.append(nn.ConvTranspose2d(in_channels=256, out_channels=128, kernel_size=(5, 5), padding=2))
+        modules.append(nn.BatchNorm2d(128))
+        modules.append(nn.ReLU())
+        modules.append(nn.ConvTranspose2d(in_channels=128, out_channels=32, kernel_size=(5, 5), padding=2))
+        modules.append(nn.BatchNorm2d(32))
+        modules.append(nn.ReLU())
+        modules.append(nn.ConvTranspose2d(in_channels=32, out_channels=out_channels, kernel_size=(5, 5), padding=2))
         # ========================
         self.cnn = nn.Sequential(*modules)
 
@@ -67,7 +85,10 @@ class VAE(nn.Module):
 
         # TODO: Add parameters needed for encode() and decode().
         # ====== YOUR CODE: ======
-        raise NotImplementedError()
+        self.n_features = n_features
+        self.whm = nn.Linear(in_features=n_features, out_features=z_dim, bias=True)
+        self.whls = nn.Linear(in_features=n_features, out_features=z_dim, bias=True)
+        self.pro = nn.Linear(in_features=z_dim, out_features= n_features)
         # ========================
 
     def _check_features(self, in_size):
@@ -87,7 +108,12 @@ class VAE(nn.Module):
         # log_sigma2 (mean and log variance) of the posterior p(z|x).
         # 2. Apply the reparametrization trick.
         # ====== YOUR CODE: ======
-        raise NotImplementedError()
+        h = self.features_encoder(x)
+        h = h.view(-1, self.n_features)
+        mu = self.whm(h)
+        log_sigma2 = self.whls(h)
+        std = log_sigma2.exp_()
+        z = mu + torch.randn(std.size()) * std
         # ========================
 
         return z, mu, log_sigma2
@@ -97,7 +123,9 @@ class VAE(nn.Module):
         # 1. Convert latent to features.
         # 2. Apply features decoder.
         # ====== YOUR CODE: ======
-        raise NotImplementedError()
+        features = self.pro(z)
+        features = features.view(-1, self.features_shape[0], self.features_shape[1], self.features_shape[2])
+        x_rec = self.features_decoder(features)
         # ========================
 
         # Scale to [-1, 1] (same dynamic range as original images).
@@ -140,7 +168,14 @@ def vae_loss(x, xr, z_mu, z_log_sigma2, x_sigma2):
     # 1. The covariance matrix of the posterior is diagonal.
     # 2. You need to average over the batch dimension.
     # ====== YOUR CODE: ======
-    raise NotImplementedError()
+    data_loss = F.binary_cross_entropy(xr-x, x)
+    # data_loss = (1 / z_log_sigma2.exp()) * torch.norm((x - xr))
+
+    kldiv_loss = -0.5 * torch.sum(1 + z_log_sigma2 - z_mu.pow(2) - z_log_sigma2.exp())
+    # Normalise by same number of elements as in reconstruction
+    kldiv_loss /= x.view(-1, x.shape[0]).data.shape[0] * x.shape[0]
+
+    loss = data_loss + kldiv_loss
     # ========================
 
     return loss, data_loss, kldiv_loss
