@@ -88,7 +88,7 @@ class VAE(nn.Module):
         self.n_features = n_features
         self.whm = nn.Linear(in_features=n_features, out_features=z_dim, bias=True)
         self.whls = nn.Linear(in_features=n_features, out_features=z_dim, bias=True)
-        self.pro = nn.Linear(in_features=z_dim, out_features= n_features)
+        self.pro = nn.Linear(in_features=z_dim, out_features=n_features)
         # ========================
 
     def _check_features(self, in_size):
@@ -168,12 +168,15 @@ def vae_loss(x, xr, z_mu, z_log_sigma2, x_sigma2):
     # 1. The covariance matrix of the posterior is diagonal.
     # 2. You need to average over the batch dimension.
     # ====== YOUR CODE: ======
-    data_loss = F.binary_cross_entropy(xr-x, x)
-    # data_loss = (1 / z_log_sigma2.exp()) * torch.norm((x - xr))
+    x = x.view(x.size(0), -1)
+    xr = xr.view(xr.size(0), -1)
+    data_loss = (((x - xr) ** 2).sum(dim=1)) / x_sigma2
 
-    kldiv_loss = -0.5 * torch.sum(1 + z_log_sigma2 - z_mu.pow(2) - z_log_sigma2.exp())
-    # Normalise by same number of elements as in reconstruction
-    kldiv_loss /= x.view(-1, x.shape[0]).data.shape[0] * x.shape[0]
+    kldiv_loss = z_log_sigma2.exp().sum(dim=1) + (z_mu ** 2).sum(dim=1) - z_mu.size(1) - z_log_sigma2.sum(dim=1)
+
+    data_loss = data_loss.mean() / x.size(1)
+
+    kldiv_loss = kldiv_loss.mean()
 
     loss = data_loss + kldiv_loss
     # ========================
