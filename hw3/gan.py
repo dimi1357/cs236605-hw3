@@ -22,7 +22,8 @@ class Discriminator(nn.Module):
         # You can then use either an affine layer or another conv layer to
         # flatten the features.
         # ====== YOUR CODE: ======
-        raise NotImplementedError()
+        self.disc = EncoderCNN(in_size[0], 1024)
+        self.affine = nn.Linear(1024 * in_size[1] * in_size[2], 1)
         # ========================
 
     def forward(self, x):
@@ -35,7 +36,10 @@ class Discriminator(nn.Module):
         # No need to apply sigmoid to obtain probability - we'll combine it
         # with the loss due to improved numerical stability.
         # ====== YOUR CODE: ======
-        raise NotImplementedError()
+        y = self.disc(x)
+        y = y.view(y.size(0), -1)
+        y = self.affine(y)
+        y = torch.log(y / (1 - y))
         # ========================
         return y
 
@@ -56,7 +60,7 @@ class Generator(nn.Module):
         # section or implement something new.
         # You can assume a fixed image size.
         # ====== YOUR CODE: ======
-        raise NotImplementedError()
+        self.decoder = DecoderCNN(z_dim, out_channels)
         # ========================
 
     def sample(self, n, with_grad=False):
@@ -73,7 +77,8 @@ class Generator(nn.Module):
         # Generate n latent space samples and return their reconstructions.
         # Don't use a loop.
         # ====== YOUR CODE: ======
-        raise NotImplementedError()
+        with torch.set_grad_enabled(with_grad):
+            samples = self.decode(torch.randn(n, self.z_dim).to(device)).cpu()
         # ========================
         return samples
 
@@ -87,7 +92,9 @@ class Generator(nn.Module):
         # Don't forget to make sure the output instances have the same scale
         # as the original (real) images.
         # ====== YOUR CODE: ======
-        raise NotImplementedError()
+        z = torch.unsqueeze(z, dim=2)
+        z = torch.unsqueeze(z, dim=3)
+        x = self.decoder(z)
         # ========================
         return x
 

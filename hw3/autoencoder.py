@@ -17,16 +17,16 @@ class EncoderCNN(nn.Module):
         # You can use any Conv layer parameters, use pooling or only strides,
         # use any activation functions, use BN or Dropout, etc.
         # ====== YOUR CODE: ======
-        modules.append(nn.Conv2d(in_channels=in_channels, out_channels=64, kernel_size=(5, 5), padding=2))
+        modules.append(nn.Conv2d(in_channels=in_channels, out_channels=64, kernel_size=(5, 5), padding=2, stride=2, bias=False))
         modules.append(nn.BatchNorm2d(64))
         modules.append(nn.ReLU())
-        modules.append(nn.Conv2d(in_channels=64, out_channels=128, kernel_size=(5, 5), padding=2))
+        modules.append(nn.Conv2d(in_channels=64, out_channels=128, kernel_size=(5, 5), padding=2, stride=2, bias=False))
         modules.append(nn.BatchNorm2d(128))
         modules.append(nn.ReLU())
-        modules.append(nn.Conv2d(in_channels=128, out_channels=256, kernel_size=(5, 5), padding=2))
+        modules.append(nn.Conv2d(in_channels=128, out_channels=256, kernel_size=(5, 5), padding=2, stride=2, bias=False))
         modules.append(nn.BatchNorm2d(256))
         modules.append(nn.ReLU())
-        modules.append(nn.Conv2d(in_channels=256, out_channels=out_channels, kernel_size=(5, 5), padding=2))
+        modules.append(nn.Conv2d(in_channels=256, out_channels=out_channels, kernel_size=(5, 5), padding=2, stride=2, bias=False))
         # ========================
         self.cnn = nn.Sequential(*modules)
 
@@ -48,16 +48,16 @@ class DecoderCNN(nn.Module):
         # Output should be a batch of images, with same dimensions as the
         # inputs to the Encoder were.
         # ====== YOUR CODE: ======
-        modules.append(nn.ConvTranspose2d(in_channels=in_channels, out_channels=256, kernel_size=(5, 5), padding=2))
+        modules.append(nn.ConvTranspose2d(in_channels=in_channels, out_channels=256, kernel_size=(5, 5), padding=2, stride=2, bias=False, output_padding=1))
         modules.append(nn.BatchNorm2d(256))
         modules.append(nn.ReLU())
-        modules.append(nn.ConvTranspose2d(in_channels=256, out_channels=128, kernel_size=(5, 5), padding=2))
+        modules.append(nn.ConvTranspose2d(in_channels=256, out_channels=128, kernel_size=(5, 5), padding=2, stride=2, bias=False, output_padding=1))
         modules.append(nn.BatchNorm2d(128))
         modules.append(nn.ReLU())
-        modules.append(nn.ConvTranspose2d(in_channels=128, out_channels=32, kernel_size=(5, 5), padding=2))
+        modules.append(nn.ConvTranspose2d(in_channels=128, out_channels=32, kernel_size=(5, 5), padding=2, stride=2, bias=False, output_padding=1))
         modules.append(nn.BatchNorm2d(32))
         modules.append(nn.ReLU())
-        modules.append(nn.ConvTranspose2d(in_channels=32, out_channels=out_channels, kernel_size=(5, 5), padding=2))
+        modules.append(nn.ConvTranspose2d(in_channels=32, out_channels=out_channels, kernel_size=(5, 5), padding=2, stride=2, bias=False, output_padding=1))
         # ========================
         self.cnn = nn.Sequential(*modules)
 
@@ -108,12 +108,14 @@ class VAE(nn.Module):
         # log_sigma2 (mean and log variance) of the posterior p(z|x).
         # 2. Apply the reparametrization trick.
         # ====== YOUR CODE: ======
+        device = next(self.parameters()).device
+        x = x.to(device)
         h = self.features_encoder(x)
         h = h.view(-1, self.n_features)
         mu = self.whm(h)
         log_sigma2 = self.whls(h)
         std = log_sigma2.exp_()
-        z = mu + torch.randn(std.size()) * std
+        z = mu.to(device) + torch.randn(std.size()).to(device) * std.to(device)
         # ========================
 
         return z, mu, log_sigma2
@@ -123,6 +125,8 @@ class VAE(nn.Module):
         # 1. Convert latent to features.
         # 2. Apply features decoder.
         # ====== YOUR CODE: ======
+        device = next(self.parameters()).device
+        z = z.to(device)
         features = self.pro(z)
         features = features.view(-1, self.features_shape[0], self.features_shape[1], self.features_shape[2])
         x_rec = self.features_decoder(features)
@@ -139,7 +143,7 @@ class VAE(nn.Module):
             # Generate n latent space samples and return their reconstructions.
             # Remember that for the model, this is like inference.
             # ====== YOUR CODE: ======
-            raise NotImplementedError()
+            samples = self.decode(torch.randn(n, self.z_dim).to(device)).cpu()
             # ========================
         return samples
 
